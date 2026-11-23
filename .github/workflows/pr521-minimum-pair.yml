@@ -1,0 +1,107 @@
+name: PR521 minimum-dependency paired comparison
+
+"on":
+  push:
+    branches:
+      - chore/no-ref/diagnose-pr521-minimum-pair-s71svot5
+
+permissions:
+  contents: read
+
+jobs:
+  paired-comparison:
+    if: github.repository == 'JohnDReynolds/skfolio'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PAIR_ENV: ${{ runner.temp }}/pr521-venv
+      PAIR_RESULTS: ${{ runner.temp }}/pr521-results
+      PAIR_CONFIG: ${{ github.workspace }}/diagnostic-config/.github/diagnostics
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - name: Check out diagnostic configuration
+        uses: actions/checkout@v7
+        with:
+          path: diagnostic-config
+          persist-credentials: false
+      - name: Check out accepted base
+        uses: actions/checkout@v7
+        with:
+          repository: JohnDReynolds/skfolio
+          ref: 444e548ee39eed4aaadbde64416fd495f6f109ab
+          path: baseline
+          persist-credentials: false
+      - name: Check out unchanged PR head
+        uses: actions/checkout@v7
+        with:
+          repository: JohnDReynolds/skfolio
+          ref: 57d6b665c0ab4c8c03d3eef534d61fecda7b076b
+          path: pr-head
+          persist-credentials: false
+      - name: Set up original CI Python
+        id: python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.10.22
+      - name: Set up original CI uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: 0.13.9
+          enable-cache: false
+      - name: Install exact original minimum-dependency inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$PAIR_RESULTS"
+          {
+            uv venv --python '${{ steps.python.outputs.python-path }}' "$PAIR_ENV"
+            uv pip install --python "$PAIR_ENV/bin/python" --only-binary :all: -r "$PAIR_CONFIG/pr521_minimum_pins.txt"
+            uv pip install --python "$PAIR_ENV/bin/python" --no-deps --editable "$GITHUB_WORKSPACE/baseline"
+            uv pip check --python "$PAIR_ENV/bin/python"
+          } 2>&1 | tee "$PAIR_RESULTS/install.log"
+      - name: Accepted base full native suite
+        id: base1
+        run: >-
+          "$PAIR_ENV/bin/python" "$PAIR_CONFIG/pr521_compare.py" run
+          --label base-1 --source "$GITHUB_WORKSPACE/baseline"
+          --commit 444e548ee39eed4aaadbde64416fd495f6f109ab
+      - name: 'Base result: exit ${{ steps.base1.outputs.native_exit }}, ${{ steps.base1.outputs.passed }} passed, ${{ steps.base1.outputs.failed }} failed'
+        run: echo 'Native test failures are comparison data; see the final summary.'
+      - name: PR head full native suite
+        id: pr1
+        run: >-
+          "$PAIR_ENV/bin/python" "$PAIR_CONFIG/pr521_compare.py" run
+          --label pr-1 --source "$GITHUB_WORKSPACE/pr-head"
+          --commit 57d6b665c0ab4c8c03d3eef534d61fecda7b076b
+      - name: 'PR result: exit ${{ steps.pr1.outputs.native_exit }}, ${{ steps.pr1.outputs.passed }} passed, ${{ steps.pr1.outputs.failed }} failed'
+        run: echo 'Native test failures are comparison data; see the final summary.'
+      - name: Determine whether reverse-order stability check is needed
+        id: decision
+        run: '"$PAIR_ENV/bin/python" "$PAIR_CONFIG/pr521_compare.py" decide'
+      - name: Repeat PR head on this same runner
+        if: steps.decision.outputs.repeat == 'true'
+        id: pr2
+        run: >-
+          "$PAIR_ENV/bin/python" "$PAIR_CONFIG/pr521_compare.py" run
+          --label pr-2 --source "$GITHUB_WORKSPACE/pr-head"
+          --commit 57d6b665c0ab4c8c03d3eef534d61fecda7b076b
+      - name: Repeat accepted base on this same runner
+        if: steps.decision.outputs.repeat == 'true'
+        id: base2
+        run: >-
+          "$PAIR_ENV/bin/python" "$PAIR_CONFIG/pr521_compare.py" run
+          --label base-2 --source "$GITHUB_WORKSPACE/baseline"
+          --commit 444e548ee39eed4aaadbde64416fd495f6f109ab
+      - name: Summarize native outcomes
+        if: always()
+        run: |
+          mkdir -p "$PAIR_RESULTS"
+          '${{ steps.python.outputs.python-path }}' "$PAIR_CONFIG/pr521_compare.py" summarize
+      - name: Preserve comparison logs and numerical diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr521-minimum-paired-comparison
+          path: ${{ runner.temp }}/pr521-results
+          if-no-files-found: error
+          retention-days: 30
