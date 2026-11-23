@@ -14,8 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      PAIR_ENV: ${{ runner.temp }}/pr521-venv
-      PAIR_RESULTS: ${{ runner.temp }}/pr521-results
       PAIR_CONFIG: ${{ github.workspace }}/diagnostic-config/.github/diagnostics
       UV_PYTHON_DOWNLOADS: never
     steps:
@@ -48,6 +46,11 @@ jobs:
         with:
           version: 0.13.9
           enable-cache: false
+      - name: Set isolated diagnostic paths
+        shell: bash
+        run: |
+          echo "PAIR_ENV=$RUNNER_TEMP/pr521-venv" >> "$GITHUB_ENV"
+          echo "PAIR_RESULTS=$RUNNER_TEMP/pr521-results" >> "$GITHUB_ENV"
       - name: Install exact original minimum-dependency inventory
         shell: bash
         run: |
