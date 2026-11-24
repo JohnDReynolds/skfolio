@@ -1,0 +1,58 @@
+name: PR522 comparison-only verification
+on:
+  push:
+    branches: [chore/no-ref/pr522-comparison-verification]
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Comparison ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: linux-min
+            os: ubuntu-latest
+            python: "3.10.22"
+          - profile: linux313
+            os: ubuntu-latest
+            python: "3.13.18"
+          - profile: macos314
+            os: macos-latest
+            python: "3.14.10"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: diagnostic
+      - uses: actions/checkout@v7
+        with:
+          repository: skfolio/skfolio
+          ref: 10dc6a5d038df356d60c2a64821721afbfb4f693
+          path: accepted
+      - uses: actions/checkout@v7
+        with:
+          repository: JohnDReynolds/skfolio
+          ref: a384b3798646749feb45c837a52404039f6bdc3c
+          path: published
+      - uses: actions/setup-python@v7
+        id: python
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+      - name: Install exact recorded dependencies
+        run: |
+          uv venv --python "${{ steps.python.outputs.python-path }}" .diagnostic-venv
+          uv pip install --python .diagnostic-venv -r "diagnostic/diagnostics/pr522-comparison/${{ matrix.profile }}.txt"
+          uv pip install --python .diagnostic-venv --no-deps --editable accepted
+          uv pip check --python .diagnostic-venv
+      - name: Verify accepted and exact narrowed comparison tests
+        run: uv run --python .diagnostic-venv --no-project --no-sync python diagnostic/diagnostics/pr522-comparison/runner.py
+      - name: Retain all baseline and comparison results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: comparison-${{ matrix.profile }}
+          path: results
+          if-no-files-found: error
