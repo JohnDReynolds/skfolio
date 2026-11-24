@@ -1,4 +1,4 @@
-name: PR522 paired numerical diagnostics
+name: PR522 normalized dual prototype
 on:
   push:
     branches: [chore/no-ref/pr522-native-numerical-diagnostics]
