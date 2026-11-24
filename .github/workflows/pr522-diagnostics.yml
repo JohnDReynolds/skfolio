@@ -1,0 +1,69 @@
+name: PR522 paired numerical diagnostics
+on:
+  push:
+    branches: [chore/no-ref/pr522-native-numerical-diagnostics]
+permissions:
+  contents: read
+jobs:
+  compare:
+    name: Paired ${{ matrix.profile }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: linux-min
+            os: ubuntu-latest
+            python: "3.10.22"
+          - profile: linux310
+            os: ubuntu-latest
+            python: "3.10.22"
+          - profile: linux311
+            os: ubuntu-latest
+            python: "3.11.18"
+          - profile: linux313
+            os: ubuntu-latest
+            python: "3.13.18"
+          - profile: linux314
+            os: ubuntu-latest
+            python: "3.14.10"
+          - profile: macos314
+            os: macos-latest
+            python: "3.14.10"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: diagnostic
+      - uses: actions/checkout@v7
+        with:
+          repository: skfolio/skfolio
+          ref: 10dc6a5d038df356d60c2a64821721afbfb4f693
+          path: accepted
+      - uses: actions/checkout@v7
+        with:
+          repository: JohnDReynolds/skfolio
+          ref: a384b3798646749feb45c837a52404039f6bdc3c
+          path: pr
+      - uses: actions/setup-python@v7
+        id: python
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: latest
+      - name: Install exact recorded CI dependencies in disposable runner
+        run: |
+          uv venv --python "${{ steps.python.outputs.python-path }}" .diagnostic-venv
+          uv pip install --python .diagnostic-venv -r "diagnostic/diagnostics/pr522/${{ matrix.profile }}.txt"
+          uv pip install --python .diagnostic-venv --no-deps --editable pr
+          uv pip check --python .diagnostic-venv
+      - name: Run accepted and proposed sources with identical tests and environment
+        run: uv run --python .diagnostic-venv --no-project --no-sync python diagnostic/diagnostics/pr522/runner.py
+      - name: Preserve all passing and failing diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: paired-${{ matrix.profile }}
+          path: results
+          if-no-files-found: error
